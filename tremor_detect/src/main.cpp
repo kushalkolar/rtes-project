@@ -1,4 +1,5 @@
 #include <mbed.h>
+#include <arm_math.h>
 
 // =================================================
 // * Recitation 5: SPI and Gyroscope *
@@ -25,6 +26,25 @@ void spi_cb(int event)
 }
 
 #define SCALING_FACTOR (17.5f * 0.0174532925199432957692236907684886f / 1000.0f)
+
+
+
+void psd(float32_t *data, float32_t *psd_output_buffer) {
+    // computes power spectral density using FFT
+    // places PSD output in `psd_output_buffer`
+
+    float32_t output_buffer[1024];
+    float32_t *output_ptr = output_buffer;
+
+    arm_rfft_fast_instance_f32 handler;
+
+    arm_rfft_fast_f32(
+        &handler,
+        data,
+        output_ptr,
+        0  // do rfft, if 1 does inverse rfft
+    );
+}
 
 
 int main()
@@ -84,15 +104,12 @@ int main()
         gy = ((float) raw_gy) * SCALING_FACTOR;
         gz = ((float) raw_gz) * SCALING_FACTOR;
 
-        
-
         // Print the actual values
         printf("Actual -> \t\tgx: %4.5f \t gy: %4.5f \t gz: %4.5f \t\n", gx, gy, gz);
 
         // read every 2ms
         thread_sleep_for(2);
     }
-
     // after 512ms of data is collected, analyze it and determine if a tremor is present
 
 }
