@@ -1,4 +1,5 @@
 #include <mbed.h>
+#include <arm_math.h>
 
 // =================================================
 // * Recitation 5: SPI and Gyroscope *
@@ -26,9 +27,48 @@ void spi_cb(int event)
 
 #define SCALING_FACTOR (17.5f * 0.0174532925199432957692236907684886f / 1000.0f)
 
+void energy_spectral_density(int n_samples, float32_t *sample_buffer, float32_t *esd) {
+    // computes discrete energy (ESD) spectral density from FFT
+    // places ESD output in `psd_output_buffer`
+    // see: https://en.wikipedia.org/wiki/Spectral_density#Energy_spectral_density
+    // This computers a discrete by basically computing the square of the absolute
+    // value of each FFT bin. Basically, each FFT bin is a complex number in the form:
+    // a + bi, where i = sqrt(-1). Then ESD of each bin =
+    // abs(a + bi) = (sqrt(a^2 + b^2))^2 = a^2 + b^2
+    printf("starting esd\n");
 
-int main()
-{
+    float32_t output_buffer[128];
+    float32_t *output_ptr = output_buffer;
+
+    arm_rfft_fast_instance_f32 handler;
+
+    arm_status status;
+    status = arm_rfft_fast_init_f32(&handler, 128);
+
+    arm_rfft_fast_f32(&handler, sample_buffer, output_ptr, 0);
+
+    printf("fft: %3.2f\n", output_buffer[0]);
+
+    // apparently the output buffer of ARM FFT is like this:
+    // i0_real, i0_complex, i1_real, i1_complex, we we square
+    // and add the corresponding real and complex parts
+
+    int i;  // index
+    float a;  // real part of FFT bin
+    float b;  // complex part of FFT bin
+    float value;
+    printf(">esd:0|g,clr\n");
+    for (i = 0; i < 127; i+=2) {
+        a = output_buffer[i];  // real
+        b = output_buffer[i + 1];  // complex
+        value = a*a + b*b;
+        printf(">esd: %3.2f|g \n", value);
+        esd[i / 2] = value;  // ESD for this bin
+    }
+}
+
+void collect_data(int interval, int n_samples, float32_t *sample_buffer) {
+    // TODO: See if spi object and flags can be initialized just once in main() and then passed into collect_data
     // Initialize the SPI object with specific pins.
     SPI spi(PF_9, PF_8, PF_7, PC_1, use_gpio_ssel);
 
@@ -51,15 +91,11 @@ int main()
     spi.transfer(write_buf, 2, read_buf, 2, spi_cb);
     flags.wait_all(SPI_FLAG);
 
-    // collect 256 sample points at 2ms intervals
-    // 256 * 2ms = 512 ms of data
-    float sample_buffer[256];
-
     int16_t raw_gx, raw_gy, raw_gz;
     float gx, gy, gz;
 
     int sample_ix;
-    for (sample_ix = 0; sample_ix < 256; sample_ix ++){
+    for (sample_ix = 0; sample_ix < 128; sample_ix++) {
         // Prepare to read the gyroscope values starting from OUT_X_L
         write_buf[0] = OUT_X_L | 0x80 | 0x40;
 
@@ -73,26 +109,43 @@ int main()
         raw_gz = (((int16_t)read_buf[6]) << 8) | ((int16_t) read_buf[5]);
 
         // Print the raw values for debugging 
-        printf("RAW -> \t\tgx: %d \t gy: %d \t gz: %d \t\n", raw_gx, raw_gy, raw_gz);
-
-            printf(">x_axis: %d|g \n", raw_gx);
-            printf(">y_axis: %d|g \n", raw_gy);
-            printf(">z_axis: %d|g \n", raw_gz);
+        // printf("RAW \t\tgx: %d \t gy: %d \t gz: %d \t\n", raw_gx, raw_gy, raw_gz);
 
         // Convert raw data to actual values using a scaling factor
         gx = ((float) raw_gx) * SCALING_FACTOR;
         gy = ((float) raw_gy) * SCALING_FACTOR;
         gz = ((float) raw_gz) * SCALING_FACTOR;
 
-        
+        sample_buffer[sample_ix] = gy;
 
         // Print the actual values
-        printf("Actual -> \t\tgx: %4.5f \t gy: %4.5f \t gz: %4.5f \t\n", gx, gy, gz);
+        // printf("Actual -> \t\tgx: %4.5f \t gy: %4.5f \t gz: %4.5f \t\n", gx, gy, gz);
 
-        // read every 2ms
-        thread_sleep_for(2);
+        // printf(">x_axis: %5.2f|g \n", gx);
+        printf(">y_axis: %5.2f|g \n", gy);
+        // printf(">z_axis: %5.2f|g \n", gz);
+
+        thread_sleep_for(interval);
     }
+}
 
-    // after 512ms of data is collected, analyze it and determine if a tremor is present
 
+int main()
+{
+    // collect data every 4ms
+    // sampling rate = 1s / interval = 250Hz
+    int interval = 4;
+
+    // collect 128 samples for a total of 512ms of data
+    int n_samples = 128;
+
+    // a buffer to store the samples, array of size n_samples
+    float32_t sample_buffer[128];
+    float32_t esd[128];
+
+    while (1) {
+        collect_data(interval, n_samples, &sample_buffer[0]);
+        printf("Data collected!\n");
+        energy_spectral_density(n_samples, &sample_buffer[0], &esd[0]);
+    }
 }
