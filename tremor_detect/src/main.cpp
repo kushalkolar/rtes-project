@@ -51,11 +51,15 @@ int main()
     spi.transfer(write_buf, 2, read_buf, 2, spi_cb);
     flags.wait_all(SPI_FLAG);
 
-    while(1) {
+    // collect 256 sample points at 2ms intervals
+    // 256 * 2ms = 512 ms of data
+    float sample_buffer[256];
 
-        uint16_t raw_gx, raw_gy, raw_gz;
-        float gx, gy, gz;
+    int16_t raw_gx, raw_gy, raw_gz;
+    float gx, gy, gz;
 
+    int sample_ix;
+    for (sample_ix = 0; sample_ix < 256; sample_ix ++){
         // Prepare to read the gyroscope values starting from OUT_X_L
         write_buf[0] = OUT_X_L | 0x80 | 0x40;
 
@@ -64,9 +68,9 @@ int main()
         flags.wait_all(SPI_FLAG);
 
         // Convert the received data into 16-bit integers for each axis
-        raw_gx = (((uint16_t)read_buf[2]) << 8) | ((uint16_t) read_buf[1]);
-        raw_gy = (((uint16_t)read_buf[4]) << 8) | ((uint16_t) read_buf[3]);
-        raw_gz = (((uint16_t)read_buf[6]) << 8) | ((uint16_t) read_buf[5]);
+        raw_gx = (((int16_t)read_buf[2]) << 8) | ((int16_t) read_buf[1]);
+        raw_gy = (((int16_t)read_buf[4]) << 8) | ((int16_t) read_buf[3]);
+        raw_gz = (((int16_t)read_buf[6]) << 8) | ((int16_t) read_buf[5]);
 
         // Print the raw values for debugging 
         printf("RAW -> \t\tgx: %d \t gy: %d \t gz: %d \t\n", raw_gx, raw_gy, raw_gz);
@@ -80,33 +84,15 @@ int main()
         gy = ((float) raw_gy) * SCALING_FACTOR;
         gz = ((float) raw_gz) * SCALING_FACTOR;
 
+        
+
         // Print the actual values
         printf("Actual -> \t\tgx: %4.5f \t gy: %4.5f \t gz: %4.5f \t\n", gx, gy, gz);
 
-        thread_sleep_for(100);
+        // read every 2ms
+        thread_sleep_for(2);
     }
 
+    // after 512ms of data is collected, analyze it and determine if a tremor is present
+
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
