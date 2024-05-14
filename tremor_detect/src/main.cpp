@@ -28,10 +28,14 @@ void spi_cb(int event)
 #define SCALING_FACTOR (17.5f * 0.0174532925199432957692236907684886f / 1000.0f)
 
 
-
-void psd(float32_t *data, float32_t *psd_output_buffer) {
-    // computes power spectral density using FFT
-    // places PSD output in `psd_output_buffer`
+void energy_spectral_density(float32_t *data, float32_t *esd) {
+    // computes discrete energy (ESD) spectral density from FFT
+    // places ESD output in `psd_output_buffer`
+    // see: https://en.wikipedia.org/wiki/Spectral_density#Energy_spectral_density
+    // This computers a discrete by basically computing the square of the absolute
+    // value of each FFT bin. Basically, each FFT bin is a complex number in the form:
+    // a + bi, where i = sqrt(-1). Then ESD of each bin =
+    // abs(a + bi) = (sqrt(a^2 + b^2))^2 = a^2 + b^2
 
     float32_t output_buffer[1024];
     float32_t *output_ptr = output_buffer;
@@ -44,6 +48,19 @@ void psd(float32_t *data, float32_t *psd_output_buffer) {
         output_ptr,
         0  // do rfft, if 1 does inverse rfft
     );
+
+    // apparently the output buffer of ARM FFT is like this:
+    // i0_real, i0_complex, i1_real, i1_complex, we we square
+    // and add the corresponding real and complex parts
+
+    int i;  // index
+    int a;  // real part of FFT bin
+    int b;  // complex part of FFT bin
+    for (i = 0; i < 1023; i+=2){
+        a = output_buffer[i];  // real
+        b = output_buffer[i + 1];  // complex
+        esd[i / 2] = a*a + b*b;  // ESD for this bin
+    }
 }
 
 
