@@ -1,5 +1,6 @@
 #include <mbed.h>
 #include <arm_math.h>
+#include "drivers/LCD_DISCO_F429ZI.h"
 
 // =================================================
 // * Recitation 5: SPI and Gyroscope *
@@ -17,8 +18,11 @@
 #define CTRL_REG4_CONFIG 0b0'0'01'0'00'0
 #define SPI_FLAG 1
 #define OUT_X_L 0x28
+#define lower_threshold 50
+#define upper_threshold 2000
 
 EventFlags flags;
+LCD_DISCO_F429ZI lcd;
 
 void spi_cb(int event)
 {
@@ -26,6 +30,39 @@ void spi_cb(int event)
 }
 
 #define SCALING_FACTOR (17.5f * 0.0174532925199432957692236907684886f / 1000.0f)
+
+bool binary_classifier(float* esd)
+{
+    float energy_value = esd[1] + esd[2] + esd[3];
+
+    // printf("Energy Value =%f", energy_value);
+    if (energy_value > lower_threshold && energy_value < upper_threshold)
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+
+}
+
+// void  printLCD(float* esd)
+// {
+    // if (binary_classifier(&esd[0])) {
+    //     printf("Tremor detected\n");
+    //     lcd.Clear(LCD_COLOR_RED);
+    //     lcd.SetBackColor(LCD_COLOR_RED);
+    //     lcd.SetTextColor(LCD_COLOR_WHITE);
+    //     lcd.DisplayStringAtLine(5, (uint8_t *)"Tremor detected");
+    // } else {
+    //     printf("No tremor detected\n");
+    //     lcd.Clear(LCD_COLOR_GREEN);
+    //     lcd.SetBackColor(LCD_COLOR_GREEN);
+    //     lcd.SetTextColor(LCD_COLOR_BLACK);
+    //     lcd.DisplayStringAtLine(5, (uint8_t *)"Monitoring...");
+    // }
+// }
 
 void energy_spectral_density(int n_samples, float32_t *sample_buffer, float32_t *esd) {
     // computes discrete energy (ESD) spectral density from FFT
@@ -42,12 +79,15 @@ void energy_spectral_density(int n_samples, float32_t *sample_buffer, float32_t 
 
     arm_rfft_fast_instance_f32 handler;
 
+    bool flag = false;
+    float energy_value;
+
     arm_status status;
     status = arm_rfft_fast_init_f32(&handler, 128);
 
     arm_rfft_fast_f32(&handler, sample_buffer, output_ptr, 0);
 
-    printf("fft: %3.2f\n", output_buffer[0]);
+    // printf("fft: %3.2f\n", output_buffer[0]);
 
     // apparently the output buffer of ARM FFT is like this:
     // i0_real, i0_complex, i1_real, i1_complex, we we square
@@ -57,13 +97,39 @@ void energy_spectral_density(int n_samples, float32_t *sample_buffer, float32_t 
     float a;  // real part of FFT bin
     float b;  // complex part of FFT bin
     float value;
-    printf(">esd:0|g,clr\n");
+    // printf(">esd:0|g,clr\n");
     for (i = 0; i < 127; i+=2) {
         a = output_buffer[i];  // real
         b = output_buffer[i + 1];  // complex
         value = a*a + b*b;
-        printf(">esd: %3.2f|g \n", value);
+        // printf(">esd: %3.2f|g \n", value);
         esd[i / 2] = value;  // ESD for this bin
+    }
+    // printLCD(&esd[0]);
+    // flag = binary_classifier(&esd[0]);
+    energy_value = esd[1] + esd[2] + esd[3];
+
+    printf("Energy Value =%f", energy_value);
+    if (energy_value > lower_threshold && energy_value < upper_threshold)
+    {
+        flag = true;
+    }
+    else
+    {
+        flag = false;
+    }
+    if (flag == 1) {
+        printf("Tremor detected\n");
+        lcd.Clear(LCD_COLOR_RED);
+        lcd.SetBackColor(LCD_COLOR_RED);
+        lcd.SetTextColor(LCD_COLOR_WHITE);
+        lcd.DisplayStringAt(10,LINE(8),(uint8_t *)"Tremor detected",CENTER_MODE);
+    } else {
+        printf("No tremor detected\n");
+        lcd.Clear(LCD_COLOR_GREEN);
+        lcd.SetBackColor(LCD_COLOR_GREEN);
+        lcd.SetTextColor(LCD_COLOR_BLACK);
+        lcd.DisplayStringAt(10,LINE(8),(uint8_t *)"Monitoring...", CENTER_MODE);
     }
 }
 
@@ -122,7 +188,7 @@ void collect_data(int interval, int n_samples, float32_t *sample_buffer) {
         // printf("Actual -> \t\tgx: %4.5f \t gy: %4.5f \t gz: %4.5f \t\n", gx, gy, gz);
 
         // printf(">x_axis: %5.2f|g \n", gx);
-        printf(">y_axis: %5.2f|g \n", gy);
+        // printf(">y_axis: %5.2f|g \n", gy);
         // printf(">z_axis: %5.2f|g \n", gz);
 
         thread_sleep_for(interval);
@@ -142,6 +208,11 @@ int main()
     // a buffer to store the samples, array of size n_samples
     float32_t sample_buffer[128];
     float32_t esd[128];
+
+    lcd.Clear(LCD_COLOR_GREEN);
+    lcd.SetBackColor(LCD_COLOR_GREEN);
+    lcd.SetTextColor(LCD_COLOR_BLACK);
+    lcd.DisplayStringAtLine(5, (uint8_t *)"Monitoring...");
 
     while (1) {
         collect_data(interval, n_samples, &sample_buffer[0]);
