@@ -1,3 +1,19 @@
+/*
+Team members:
+
+Aditya Krishna
+ak11137@nyu.edu
+
+Kushal Kolar
+kck9126@nyu.edu
+
+Poojitha Vadinuri
+pv2260@nyu.edu
+
+Vir Jhangiani
+vrj2006@nyu.edu
+*/
+
 #include <mbed.h>
 #include <arm_math.h>
 #include "drivers/LCD_DISCO_F429ZI.h"
@@ -76,7 +92,7 @@ void analyze_data(int n_samples, float32_t *sample_buffer, float32_t *esd) {
         sprintf(disp_text_freq, "Frequency: 4-6Hz ");
         sprintf(disp_text_int, "Intensity: %.0f", esd[2]);
     }
-    printf("Energy Value =%f", energy_value);
+    // printf("Energy Value =%f", energy_value);
     
     //binary classifier that makes sure the total energy value over the range of 2-6hz corresponds to a tremor
     if (energy_value > LOWER_THRESHOLD && energy_value < UPPER_THRESHOLD)
@@ -182,7 +198,6 @@ int main()
 
     while (1) {
         collect_data(interval, n_samples, &sample_buffer[0]);
-        printf("Data collected!\n");
         analyze_data(n_samples, &sample_buffer[0], &esd[0]);
     }
 }
