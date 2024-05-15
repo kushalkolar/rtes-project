@@ -21,37 +21,40 @@ void spi_cb(int event)
 
 #define SCALING_FACTOR (17.5f * 0.0174532925199432957692236907684886f / 1000.0f)
 
-void energy_spectral_density(int n_samples, float32_t *sample_buffer, float32_t *esd) {
-    // computes discrete energy (ESD) spectral density from FFT
-    // places ESD output in `psd_output_buffer`
-    // see: https://en.wikipedia.org/wiki/Spectral_density#Energy_spectral_density
-    // This computers a discrete by basically computing the square of the absolute
+void analyze_data(int n_samples, float32_t *sample_buffer, float32_t *esd) {
+    // first computes discrete energy (ESD) spectral density from FFT
+    // places ESD output in `esd` buffer (ESD is basically PSD)
+    // This computes a discrete ESD by basically computing the absolute
     // value of each FFT bin. Basically, each FFT bin is a complex number in the form:
     // a + bi, where i = sqrt(-1). Then ESD of each bin =
     // abs(a + bi) = (sqrt(a^2 + b^2))^2 = a^2 + b^2
-    printf("starting esd\n");
+    // after ESD is computed, a binary classifier determines if a tremor is present or 
+    // not and sets the LCD display
+    
+    // printf("starting esd\n");
 
+    // fft output buffer and pointer
     float32_t output_buffer[128];
     float32_t *output_ptr = output_buffer;
 
     arm_rfft_fast_instance_f32 handler;
 
-    bool flag = false;
-    float energy_value;
+    bool flag = false;  // flag used for binary classifier
+    float energy_value;  // total energy for classifier
 
     arm_status status;
     status = arm_rfft_fast_init_f32(&handler, 128);
-
+    // compute fft
     arm_rfft_fast_f32(&handler, sample_buffer, output_ptr, 0);
 
     // The output buffer of ARM FFT is like this:
     // i0_real, i0_complex, i1_real, i1_complex, we we square
-    // and add the corresponding real and complex parts
+    // and add the corresponding real and complex parts to get the PSD
 
     int i;  // index
     float a;  // real part of FFT bin
     float b;  // complex part of FFT bin
-    float value;
+    float value;  // PSD value
     char disp_text_freq[16];
     char disp_text_int[16];
     // printf(">esd:0|g,clr\n");
@@ -63,7 +66,7 @@ void energy_spectral_density(int n_samples, float32_t *sample_buffer, float32_t 
         esd[i / 2] = value;  // ESD for this bin
     }
 
-    // the sum of energy at 2-4hz and 4-6hz to get the overall range of 2-6hz
+    // the sum of energy at 2-4hz and 4-6hz to get the energy in the entire 2-6hz range
     energy_value = esd[1] + esd[2];
 
     if (esd[1] > esd[2]) {
@@ -74,6 +77,7 @@ void energy_spectral_density(int n_samples, float32_t *sample_buffer, float32_t 
         sprintf(disp_text_int, "Intensity: %.0f", esd[2]);
     }
     printf("Energy Value =%f", energy_value);
+    
     //binary classifier that makes sure the total energy value over the range of 2-6hz corresponds to a tremor
     if (energy_value > LOWER_THRESHOLD && energy_value < UPPER_THRESHOLD)
     {
@@ -83,7 +87,7 @@ void energy_spectral_density(int n_samples, float32_t *sample_buffer, float32_t 
     {
         flag = false;
     }
-    //set the LCD based on whether a tremor was detected or not
+    // set the LCD color and text based on whether a tremor was detected or not
     if (flag == 1) {
         printf("Tremor detected\n");
         lcd.Clear(LCD_COLOR_RED);
@@ -179,6 +183,6 @@ int main()
     while (1) {
         collect_data(interval, n_samples, &sample_buffer[0]);
         printf("Data collected!\n");
-        energy_spectral_density(n_samples, &sample_buffer[0], &esd[0]);
+        analyze_data(n_samples, &sample_buffer[0], &esd[0]);
     }
 }
